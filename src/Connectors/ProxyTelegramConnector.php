@@ -30,7 +30,7 @@ class ProxyTelegramConnector implements ClientInterface
     protected string $apiUrl = 'api.telegram.org';
 
     /** @var array<string> */
-    protected array $accessHeaders = [
+    protected array $allowHeaders = [
         'Accept',
         'Accept-Encoding',
         'Pragma',
@@ -142,7 +142,7 @@ class ProxyTelegramConnector implements ClientInterface
     protected function filterHeadersRequest(RequestInterface $request): RequestInterface
     {
         foreach ($request->getHeaders() as $name => $value) {
-            if(!in_array($name, $this->accessHeaders)) {
+            if(!in_array($name, $this->allowHeaders)) {
                 $request = $request->withoutHeader($name);
             }
         }
