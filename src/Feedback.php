@@ -17,6 +17,10 @@ final class Feedback
         $this->connector = $connector;
     }
 
+    /**
+     * @param RequestInterface $request
+     * @return ResponseInterface
+     */
     public function send(RequestInterface $request): ResponseInterface
     {
         return $this->connector->send($request);
