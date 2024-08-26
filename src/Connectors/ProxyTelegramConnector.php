@@ -2,6 +2,7 @@
 
 namespace Feedback\Connectors;
 
+use Feedback\Exceptions\NotFoundAction;
 use GuzzleHttp\Exception\GuzzleException;
 use GuzzleHttp\Psr7\Request;
 use GuzzleHttp\Psr7\Uri;
@@ -48,23 +49,19 @@ class ProxyTelegramConnector implements ClientInterface
      * @return ResponseInterface
      * @throws ClientExceptionInterface
      * @throws GuzzleException
+     * @throws NotFoundAction
      */
     public function send(RequestInterface $request): ResponseInterface
     {
-        return $this->methodSupport($request) ?
-            $this->sendWithAttachment($request) :
-            $this->sendMessage($request);
-    }
+        if ($this->getLastAction($request) == self::HOOK_PHOTO) {
+            return $this->sendWithAttachment($request);
+        }
 
-    /**
-     * @param Request $request
-     * @return bool
-     */
-    protected function methodSupport(RequestInterface $request): bool
-    {
-        return $this->getLastAction($request) == self::HOOK_PHOTO &&
-            $request->getMethod() === 'POST'
-        ;
+        if ($this->getLastAction($request) == self::HOOK_MESSAGE) {
+            return $this->sendMessage($request);
+        }
+
+        throw new NotFoundAction();
     }
 
     /**
