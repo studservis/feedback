@@ -2,23 +2,17 @@
 
 namespace Feedback\Connectors;
 
-use Feedback\Exceptions\NotFoundAction;
-use GuzzleHttp\Exception\GuzzleException;
-use GuzzleHttp\Psr7\Request;
-use GuzzleHttp\Psr7\Uri;
-use GuzzleHttp\Psr7\Utils;
+use Feedback\Exceptions\IsNotEmptyAuthTelegram;
+use Feedback\Exceptions\IsNotEmptyChatIdTelegram;
 use Psr\Http\Client\ClientExceptionInterface;
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
 use Feedback\Interfaces\ClientInterface;
-use GuzzleHttp\Client;
+use Psr\Http\Client\ClientInterface as PsrClientInterface;
+use Psr\Http\Message\UriFactoryInterface;
 
 class ProxyTelegramConnector implements ClientInterface
 {
-    protected const HOOK_MESSAGE = 'sendMessage';
-
-    protected const HOOK_PHOTO = 'sendPhoto';
-
     protected const PROTOCOL = 'https';
 
     /** @var string  */
@@ -38,30 +32,23 @@ class ProxyTelegramConnector implements ClientInterface
         'User-Agent',
     ];
 
-    public function __construct(string $token, string $chatId)
+    /** @var PsrClientInterface */
+    private PsrClientInterface $httpClient;
+
+    /** @var UriFactoryInterface */
+    private UriFactoryInterface $uriFactory;
+
+    public function __construct(
+        PsrClientInterface $httpClient,
+        UriFactoryInterface $uriFactory,
+        string $token = '',
+        string $chatId = ''
+    )
     {
+        $this->httpClient = $httpClient;
+        $this->uriFactory = $uriFactory;
         $this->token = $token;
         $this->chatId = $chatId;
-    }
-
-    /**
-     * @param Request $request
-     * @return ResponseInterface
-     * @throws ClientExceptionInterface
-     * @throws GuzzleException
-     * @throws NotFoundAction
-     */
-    public function send(RequestInterface $request): ResponseInterface
-    {
-        if ($this->getLastAction($request) == self::HOOK_PHOTO) {
-            return $this->sendWithAttachment($request);
-        }
-
-        if ($this->getLastAction($request) == self::HOOK_MESSAGE) {
-            return $this->sendMessage($request);
-        }
-
-        throw new NotFoundAction();
     }
 
     /**
@@ -71,48 +58,50 @@ class ProxyTelegramConnector implements ClientInterface
     private function getLastAction(RequestInterface $request): string
     {
         $uri = explode('/', $request->getUri()->getPath());
-        return last($uri) ?? '';
+        return end($uri);
     }
 
     /**
-     * @param Request $request
+     * @param RequestInterface $request
      * @return ResponseInterface
-     * @throws ClientExceptionInterface
+     * @throws ClientExceptionInterface|IsNotEmptyAuthTelegram|IsNotEmptyChatIdTelegram
      */
-    protected function sendMessage(RequestInterface $request): ResponseInterface
+    public function send(RequestInterface $request): ResponseInterface
     {
-        $request = $this->filterHeadersRequest($request);
+        $action = $this->getLastAction($request);
 
-        $proxyUrl = $this->getStartUrl(self::HOOK_MESSAGE, $this->chatId);
+        $newRequest = $this->getRequestWithNewUri($request, $action);
 
-        $uri = new Uri($proxyUrl);
-        $uri = $uri->withQuery($uri->getQuery() . '&' . $request->getUri()->getQuery());
-        $request = $request->withUri($uri);
+        if(!$this->token) {
+            throw new IsNotEmptyAuthTelegram();
+        }
 
-        $client = new Client();
+        if(!$this->chatId) {
+            throw new IsNotEmptyChatIdTelegram();
+        }
 
-        return $client->send($request);
+        return $this->httpClient->sendRequest($newRequest);
     }
 
     /**
-     * @param Request $request
-     * @return ResponseInterface
-     * @throws ClientExceptionInterface
+     * @param RequestInterface $currentRequest
+     * @param string $hook
+     * @return RequestInterface
      */
-    protected function sendWithAttachment(RequestInterface $request): ResponseInterface
+    private function getRequestWithNewUri(RequestInterface $currentRequest, string $hook): RequestInterface
     {
-        $request = $this->filterHeadersRequest($request);
+        $request = $this->filterHeadersRequest($currentRequest);
+        $proxyUrl = $this->getStartUrl($hook, $this->chatId);
 
-        $proxyUrl = $this->getStartUrl(self::HOOK_PHOTO, $this->chatId);
+        $uri = $this
+            ->uriFactory
+            ->createUri($proxyUrl)
+            ->withQuery(
+                $currentRequest->getUri()->getQuery() . '&' .
+                $this->uriFactory->createUri($proxyUrl)->getQuery()
+        );
 
-        $uri = new Uri($proxyUrl);
-        $uri = $uri->withQuery($uri->getQuery() . '&' . $request->getUri()->getQuery());
-        $request = $request->withUri($uri);
-
-        $client = new Client();
-
-        return $client->send($request);
-
+        return $request->withUri($uri);
     }
 
     /**
