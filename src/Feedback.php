@@ -2,10 +2,8 @@
 
 namespace Feedback;
 
-use GuzzleHttp\Psr7\Request;
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
-use RuntimeException;
 use Feedback\Interfaces\ClientInterface;
 
 final class Feedback
